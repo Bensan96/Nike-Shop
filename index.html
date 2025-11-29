@@ -121,10 +121,27 @@
                 console.error("Fehler bei der Firebase-Initialisierung oder Authentifizierung:", error);
             }
         }
+        
+        // --- GitHub Bildpfad Logik (REAKTIVIERT) ---
+        // BITTE ERSETZE 'DEIN_BENUTZERNAME' durch deinen tatsächlichen GitHub-Nutzernamen!
+        const GITHUB_USERNAME = 'Bensan96'; 
+        const REPOSITORY_NAME = 'Nike-Shop'; // Wie von dir genannt
+        const BRANCH_NAME = 'main'; // Normalerweise der Haupt-Branch
+        
+        const getGitHubImageUrl = (filename) => {
+            if (!GITHUB_USERNAME || GITHUB_USERNAME === 'Bensan96') {
+                // Fallback-Platzhalter, wenn der Benutzername nicht gesetzt ist
+                return `https://placehold.co/400x300/f0f0f0/000000?text=${filename}`;
+            }
+            // Konstruiert den Raw-Content-URL
+            return `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPOSITORY_NAME}/${BRANCH_NAME}/${filename}`;
+        };
+        // ---------------------------------------------
+
 
         // --- Detaillierte Produkt-Mock-Daten für 43 Schuhe ---
         const products = [
-            { id: 'Nike-Shop/main/shoe-1', name: 'NIKE Air Jordan 1 Mid Offwhite', price: 179.99, description: 'Dieser Air Jordan 1 Mid ,,Offwhite“ präsentiert sich in einem cleanen „Offwhite“ Look und kombiniert klassischen Basketballstyle mit modernem Streetwear. Das Obermaterial aus hochwertigem Leder sorgt für Strapazierfähigkeit und eine edle Optik. Perforationen im Zehenbereich verbessern die Atmungsaktivität, während das Air-Sole-Element in der Ferse für leichten, reaktiven Komfort sorgt. Eine robuste Gummiaußensohle mit charakteristischem Profil bietet zuverlässige Traktion im Alltag.', filename: 'shoe-1.jpg' },
+            { id: 'shoe-1', name: 'NIKE Air Jordan 1 Mid Offwhite', price: 179.99, description: 'Dieser Air Jordan 1 Mid ,,Offwhite“ präsentiert sich in einem cleanen „Offwhite“ Look und kombiniert klassischen Basketballstyle mit modernem Streetwear. Das Obermaterial aus hochwertigem Leder sorgt für Strapazierfähigkeit und eine edle Optik. Perforationen im Zehenbereich verbessern die Atmungsaktivität, während das Air-Sole-Element in der Ferse für leichten, reaktiven Komfort sorgt. Eine robuste Gummiaußensohle mit charakteristischem Profil bietet zuverlässige Traktion im Alltag.', filename: 'shoe-1.jpg' },
             { id: 'shoe-2', name: 'NIKE Air Jordan 1 Mid Classic Beach', price: 159.99, description: 'Dieser Air Jordan 1 Mid ,,Classic Beach“ bringt frische Farbakzente in dein Outfit und kombiniert eine beige Grundfarbe mit hochwertigen türkisen Overlays aus weichem Suede für einen markanten, modernen Look. Der schwarze Swoosh setzt einen klaren Kontrast und unterstreicht den sportlichen Charakter des Modells. Die leichte Schaumstoffmittelsohle mit integriertem Airelement sorgt für angenehme Dämpfung. Abgerundet wird das Design durch eine zweifarbige Außensohle, die für zuverlässigen Halt und einen stylischen Auftritt sorgt.', filename: 'shoe-2.jpg' },
             { id: 'shoe-3', name: 'NIKE Air Jordan 1 Mid Iron man', price: 199.99, description: 'Dieser Air Jordan 1 Mid ,,Iron man“ überzeugt mit einem auffälligen Metallic-Finish, das rote Lacklederoverlays mit goldenen Elementen kombiniert und damit einen absolut einzigartigen Look bietet. Das glänzende Obermaterial verleiht dem Schuh eine extravagante Optik, während die bewährte Air-Sole-Dämpfung für den typischen Jordankomfort sorgt. Eine farblich abgestimmte Gummiaußensohle liefert hervorragende Traktion. Mit seinem mutigen Design ist dieses Modell ein echter Hingucker für Fans besonderer Styles.', filename: 'shoe-3.jpg' },
             { id: 'shoe-4', name: 'NIKE Lord of Drip', price: 259.99, description: 'Der Sneaker ,,Lord of Drip“ ist eine Hommage an die epische Saga von J.R.R. Tolkien und präsentiert sich in einem erdigen, verwitterten Braun-Grün. Details wie der Narsilanhänger, Elbengravuren am Swoosh und die Inschrift des Einen Rings an der Sohle machen dieses Paar zu einem Schatz für Fantasyenthusiasten.', filename: 'shoe-4.jpg' },
@@ -207,7 +224,6 @@
                 }, (error) => {
                     console.error("Fehler beim Abrufen des Warenkorbs in Echtzeit:", error);
                     // Fallback: Warenkorb im localStorage speichern, falls Firestore fehlschlägt.
-                    // (Obwohl wir Firestore verwenden MÜSSEN, ist dies nur für den Notfall)
                     window.app.cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
                     window.app.renderCart();
                     window.app.updateCartCount();
@@ -365,8 +381,8 @@
             renderHomeView: () => {
                 const productsHtml = window.app.getProducts().map(shoe => `
                     <div class="card-shadow bg-white rounded-xl overflow-hidden cursor-pointer" onclick="window.app.navigateToDetail('${shoe.id}')">
-                        <!-- Platzhalterbild. Ersetze 'src' durch deine echten Bildpfade -->
-                        <img src="https://placehold.co/400x300/f0f0f0/000000?text=${shoe.filename}" 
+                        <!-- PRODUKT-VORSCHAU-BILD mit GitHub Raw Link -->
+                        <img src="${getGitHubImageUrl(shoe.filename)}" 
                              onerror="this.onerror=null; this.src='https://placehold.co/400x300/f0f0f0/000000?text=Bild+nicht+gefunden';"
                              alt="${shoe.name}" class="w-full h-auto object-cover aspect-[4/3]"/>
                         <div class="p-4">
@@ -400,7 +416,8 @@
                         <div class="lg:flex lg:space-x-12 bg-white p-6 rounded-xl shadow-lg">
                             <!-- Bildbereich -->
                             <div class="lg:w-1/2 mb-6 lg:mb-0">
-                                <img src="https://placehold.co/800x600/f0f0f0/000000?text=Detail%20von%20${shoe.filename}" 
+                                <!-- PRODUKT-DETAIL-BILD mit GitHub Raw Link -->
+                                <img src="${getGitHubImageUrl(shoe.filename)}" 
                                      onerror="this.onerror=null; this.src='https://placehold.co/800x600/f0f0f0/000000?text=Bild+nicht+gefunden';"
                                      alt="${shoe.name} Detailansicht" class="w-full h-auto object-cover rounded-lg aspect-[4/3] border border-gray-100"/>
                             </div>
@@ -464,7 +481,7 @@
 
                         return `
                             <div class="flex items-center py-4 border-b">
-                                <img src="https://placehold.co/100x75/f0f0f0/000000?text=${item.filename}" 
+                                <img src="${getGitHubImageUrl(item.filename)}" 
                                      onerror="this.onerror=null; this.src='https://placehold.co/100x75/f0f0f0/000000?text=Bild';"
                                      alt="${item.name}" class="w-16 h-auto object-cover rounded-lg mr-4 border"/>
                                 <div class="flex-grow">
