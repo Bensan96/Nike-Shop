@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIKE Shop - Clean White Edition</title>
+    <!-- Lade Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Lucide Icons für den Warenkorb und das Menü -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary-color: #000000;
+            --secondary-color: #f0f0f0;
+            --text-color: #333333;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: white; /* Clean white background */
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        /* Stil für den Warenkorb-Badge */
+        #cart-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            padding: 2px 6px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            line-height: 1;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 9999px;
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+        .card-shadow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #333333;
+        }
+        .mobile-only {
+            display: none;
+        }
+        @media (max-width: 640px) {
+            .mobile-only {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Firebase SDKs importieren -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Deaktiviere Logging im Produktions-Build, aber aktiviere es hier für Debugging
+        setLogLevel('debug');
+
+        // Globale Variablen aus dem Canvas-Environment (MANDATORY)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // Funktion zur Initialisierung von Firebase
+        async function initializeFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase Config nicht gefunden. Der Warenkorb wird nicht gespeichert.");
+                return;
+            }
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Authentifizierung
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        console.log("Firebase Auth Ready. User ID:", userId);
+                        // Warenkorb-Listener starten, sobald die Authentifizierung abgeschlossen ist
+                        window.app.listenToCart();
+                        document.getElementById('user-id-display').textContent = userId;
+                    } else {
+                        userId = null;
+                        isAuthReady = true;
+                        console.log("Anonyme Anmeldung fehlgeschlagen oder abgemeldet.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Fehler bei der Firebase-Initialisierung oder Authentifizierung:", error);
+            }
+        }
+
+        // --- Detaillierte Produkt-Mock-Daten für 43 Schuhe ---
+        const products = [
+            { id: 'shoe-1', name: 'NIKE Air Jordan 1 Mid Offwhite', price: 179.99, description: 'Dieser Air Jordan 1 Mid ,,Offwhite“ präsentiert sich in einem cleanen „Offwhite“ Look und kombiniert klassischen Basketballstyle mit modernem Streetwear. Das Obermaterial aus hochwertigem Leder sorgt für Strapazierfähigkeit und eine edle Optik. Perforationen im Zehenbereich verbessern die Atmungsaktivität, während das Air-Sole-Element in der Ferse für leichten, reaktiven Komfort sorgt. Eine robuste Gummiaußensohle mit charakteristischem Profil bietet zuverlässige Traktion im Alltag.', filename: 'shoe-1.jpg' },
+            { id: 'shoe-2', name: 'NIKE Air Jordan 1 Mid Classic Beach', price: 159.99, description: 'Dieser Air Jordan 1 Mid ,,Classic Beach“ bringt frische Farbakzente in dein Outfit und kombiniert eine beige Grundfarbe mit hochwertigen türkisen Overlays aus weichem Suede für einen markanten, modernen Look. Der schwarze Swoosh setzt einen klaren Kontrast und unterstreicht den sportlichen Charakter des Modells. Die leichte Schaumstoffmittelsohle mit integriertem Airelement sorgt für angenehme Dämpfung. Abgerundet wird das Design durch eine zweifarbige Außensohle, die für zuverlässigen Halt und einen stylischen Auftritt sorgt.', filename: 'shoe-2.jpg' },
+            { id: 'shoe-3', name: 'NIKE Air Jordan 1 Mid Iron man', price: 199.99, description: 'Dieser Air Jordan 1 Mid ,,Iron man“ überzeugt mit einem auffälligen Metallic-Finish, das rote Lacklederoverlays mit goldenen Elementen kombiniert und damit einen absolut einzigartigen Look bietet. Das glänzende Obermaterial verleiht dem Schuh eine extravagante Optik, während die bewährte Air-Sole-Dämpfung für den typischen Jordankomfort sorgt. Eine farblich abgestimmte Gummiaußensohle liefert hervorragende Traktion. Mit seinem mutigen Design ist dieses Modell ein echter Hingucker für Fans besonderer Styles.', filename: 'shoe-3.jpg' },
+            { id: 'shoe-4', name: 'NIKE Lord of Drip', price: 259.99, description: 'Der Sneaker ,,Lord of Drip“ ist eine Hommage an die epische Saga von J.R.R. Tolkien und präsentiert sich in einem erdigen, verwitterten Braun-Grün. Details wie der Narsilanhänger, Elbengravuren am Swoosh und die Inschrift des Einen Rings an der Sohle machen dieses Paar zu einem Schatz für Fantasyenthusiasten.', filename: 'shoe-4.jpg' },
+            { id: 'shoe-5', name: 'NIKE Kings Style', price: 499.99, description: 'Das Modell ,,Kings Style“ strahlt puren Luxus aus. Das Obermaterial ist vollständig in glänzendem Gold gehalten und mit opulenten, barocken Schnitzereien sowie funkelnden Edelsteinen in Rot, Grün, Blau und Gelb verziert. Das Innenfutter aus tiefem Violett rundet das majestätische Erscheinungsbild ab.', filename: 'shoe-5.jpg' },
+            { id: 'shoe-6', name: 'NIKE La Casa de Papel', price: 219.99, description: 'Inspiriert von der ikonischen Serie, besticht das Design ,,La Casa de Papel“ durch ein hochglänzendes, tiefschwarzes Lacklederfinish. Die Konturen und Akzente, einschließlich der Dalimaske, leuchten in intensivem Neonrot, wodurch ein aufmerksamkeitsstarker, futuristischer Look entsteht, der ideal für die Nacht ist.', filename: 'shoe-6.jpg' },
+            { id: 'shoe-7', name: 'NIKE Tron', price: 239.99, description: 'Der ,,Tron“ ist das Modell für die digitale Ära. Er kombiniert schwarzes Lackleder mit leuchtenden Neon-Türkis Akzenten, die Leiterbahnmuster simulieren. Die helle, um den Swoosh laufende Beleuchtung und die reflektierende Sohlenumrandung sorgen für einen cleanen, aber technisch inspirierten Stil.', filename: 'shoe-7.jpg' },
+            { id: 'shoe-8', name: 'NIKE Pixel Print', price: 149.99, description: 'Dieses einzigartige Modell ,,Pixel Print“ ist eine Reminiszenz an die Anfänge des Gaming und der digitalen Kunst. Der Schuh ist komplett in Weiß und Hellgrau gehalten und erscheint, als wäre er aus dreidimensionalen Pixel-Blöcken konstruiert, ein minimalistisches Statement mit maximaler Wirkung.', filename: 'shoe-8.jpg' },
+            { id: 'shoe-9', name: 'NIKE Blue Gem', price: 269.99, description: 'Ein echtes Juwel unter den Sneakern ist das Paar ,,Blue Gem“. Das Obermaterial glänzt in einem auffälligen, facettierten Blau, das ein seltenen Skin in Counterstrike nachahmt. Weiße Kontraste an Schnürsenkeln und Sohle bringen die Tiefen des Blautons besonders zur Geltung.', filename: 'shoe-9.jpg' },
+            { id: 'shoe-10', name: 'NIKE Keep Street', price: 169.99, description: 'Der ,,Keep Street“ ist ein energiegeladenes, weißes Canvas, das mit lebhaften Graffiti- und Comic-Motiven in allen erdenklichen Farben – Gelb, Rot, Blau, Grün – bespritzt wurde. Mit sichtbaren Farbspritzern und tropfenden Elementen ist dieses Paar ein perfekter Ausdruck von Kreativität und urbaner Kunst.', filename: 'shoe-10.jpg' },
+            { id: 'shoe-11', name: 'NIKE Minas Tirith', price: 289.99, description: 'Das Design ,,Minas Tirith“ entführt Sie in die fantastische Welt der Ringe. Die Seitenwände zeigen detaillierte Illustrationen des Schlosses, aus Herr der Ringe, in Grau-Beige mit Fels- und Mauerwerktexturen. Ergänzt wird das Design durch Elbengravuren am Sohlenrand und gold-schwarze Akzente.', filename: 'shoe-11.jpg' },
+            { id: 'shoe-12', name: 'NIKE Future Drip', price: 179.99, description: 'Dieser futuristische Sneaker ,,Future Drip“ in Weiß und Schwarz kombiniert eine glatte, minimalistische Ästhetik mit technologischen Elementen. Ein leuchtender, weißer Swoosh und eine clean-strukturierte Außensohle mit angedeuteten Anschlüssen definieren diesen Hightech-Look.', filename: 'shoe-12.jpg' },
+            { id: 'shoe-13', name: 'NIKE Jungle Air', price: 154.99, description: 'Das Modell ,,Jungle Air“ ist ein lebendiges Design, das die Schönheit des Regenwaldes feiert. Das Obermaterial ist mit einem dichten, detaillierten Dschungelmuster in verschiedenen Grüntönen bedruckt, akzentuiert durch braune, baumrindenartige Overlays und kleine, bunte tropische Tiere.', filename: 'shoe-13.jpg' },
+            { id: 'shoe-14', name: 'NIKE Gryffindor Legacy', price: 229.99, description: 'Dieser Sneaker ist ein Zauber: Das Design ,,Gryffindor Legacy“ basiert auf einem cleanen weißen Obermaterial, das durch die burgunderroten und goldenen Akzente des Hogwarts Hauses veredelt wird. Das Wappen und die goldene POTTER Aufschrift an der Seite sowie die Blitz Narbe als Lace Tag machen dieses Paar zu einem magischen Must Have für Fans.', filename: 'shoe-14.jpg' },
+            { id: 'shoe-15', name: 'NIKE 9 3/4 Mid', price: 214.99, description: 'Das Modell ,,9 3/4 Mid“ taucht tiefer in die magische Welt ein und präsentiert sich in satten burgunderroten und goldenen Tönen. Die House Farben dominieren das Design, während die berühmte Plattform Aufschrift 9 3/4 und die Runen Gravur an der Sohle jedem Zauberlehrling den perfekten Auftritt ermöglichen.', filename: 'shoe-15.jpg' },
+            { id: 'shoe-16', name: 'NIKE Gaming Glace', price: 189.99, description: 'Mit dem Sneaker ,,Gaming Glace“ betreten Sie das nächste Level. Das weiße Obermaterial ist mit filigranen Leiterbahnen verziert, die in einem lebendigen, leuchtenden Farbverlauf von Blau zu Grün schimmern. Beleuchtete Konturen und das GAME OVER Patch an der Ferse sind eine Hommage an die Gaming Kultur.', filename: 'shoe-16.jpg' },
+            { id: 'shoe-17', name: 'NIKE Luxury Marble', price: 399.99, description: 'Der ,,Luxury Marble“ Sneaker bringt zeitlose Eleganz an Ihren Fuß. Das Obermaterial ist mit einer detailreichen, weißen Marmor Textur überzogen. Dieses luxuriöse Fundament wird durch den goldenen Swoosh und goldene Akzente sowie ein edles, gestepptes Muster an der Ferse ergänzt.', filename: 'shoe-17.jpg' },
+            { id: 'shoe-18', name: 'NIKE Tropical Holiday', price: 139.99, description: 'Das Design ,,Tropical Holiday“ entführt Sie direkt an den Strand. Die lebhaften, farbenfrohen hawaiianischen Muster mit Hibiskusblüten, Palmblättern und Tukanelementen harmonieren perfekt mit natürlichen Bast Akzenten am Kragen. Die stilisierte blaue Wellengrafik an der Sohle vermittelt pures Urlaubsfeeling.', filename: 'shoe-18.jpg' },
+            { id: 'shoe-19', name: 'NIKE Frozen Strike', price: 164.99, description: 'Der ,,Frozen Strike“ Sneaker ist ein Statement der Frische. Das gesamte Design ist in einem halbtransparenten, leicht bläulichen Material gehalten, das aussieht, als wäre es aus purem Eis gefertigt. Mit feinen angedeuteten Wassertropfen vermittelt dieser Schuh einen kühlen, nassen Look.', filename: 'shoe-19.jpg' },
+            { id: 'shoe-20', name: 'NIKE Sternennacht', price: 279.99, description: 'Dieses Paar ist eine rollende Leinwand: Der Van Gogh ,,Sternennacht“ Sneaker ist vollständig mit der berühmten "Sternennacht" von Vincent van Gogh bedeckt. Die satten, wirbelnden Blau und Gelbtöne des Meisterwerks sind auf dem gesamten Obermaterial und der Sohle detailgetreu abgebildet.', filename: 'shoe-20.jpg' },
+            { id: 'shoe-21', name: 'NIKE Sweet Jingle', price: 129.99, description: 'Der ,,Sweet Jingle“ Sneaker ist bereit für die Festtage. Die traditionellen Weihnachtsfarben Rot und Dunkelgrün werden durch ein Strickmuster am Kragen in Kombination mit einem ikonischen Zuckerstangen Swoosh hervorgehoben. Goldene Glöckchen an den Schnürsenkeln sorgen für einen festlichen Klang.', filename: 'shoe-21.jpg' },
+            { id: 'shoe-22', name: 'NIKE Chicago', price: 209.99, description: 'Der ,,Chicago“ Sneaker zollt dem Basketball und der Heimat des GOAT Tribut. Das Design im klaren Chicago Farbschema Weiß und Rot ist mit einem Trikotmuster versehen. Große, auffällige Ziffern der Nummer 23 und der CHICAGO Schriftzüg an der Seite und Detail an der Ferse unterstreichen den sportlichen Heritage Look.', filename: 'shoe-22.jpg' },
+            { id: 'shoe-23', name: 'NIKE Urban Street', price: 194.99, description: 'Der ,,Urban Street“ Sneaker ist ein Ausdruck von explosiver Energie. Das weiße Basis Material ist mit einer Flut von leuchtenden Neon Graffiti Elementen in Pink, Türkis, Gelb und Violett überzogen. Comic Charaktere, Drip Effekte und prominente JUMPMAN und JORDAN Schriftzüge definieren diesen lauten, urbanen Stil.', filename: 'shoe-23.jpg' },
+            { id: 'shoe-24', name: 'NIKE Louis Vuitton', price: 999.99, description: 'Der ,,Louis Vuitton“ Sneaker ist eine Hommage an modernen Luxus. Das Obermaterial ist mit einem reichen braunen Allover Monogram Muster versehen, welches mit dem klassischen Louis Vuitton Logo versehen ist und Eleganz ausstrahlt. Der große goldene Swoosh ist sauber umrahmt und der Flügel Logo Schriftzug ebenfalls in Gold gehalten, was diesen Schuh zu einem echten High Fashion Statement macht.', filename: 'shoe-24.jpg' },
+            { id: 'shoe-25', name: 'NIKE Italian Silk', price: 349.99, description: 'Das Modell ,,Italian Silk“ steht für gehobenen Streetstyle. Das Obermaterial kombiniert hochwertiges weißes Leder mit strukturierten Prägung und Akzenten an Ferse und Knöchel. Der metallisch goldene Swoosh und die dezent goldene Umrandung an der Sohle setzen luxuriöse Glanzpunkte.', filename: 'shoe-25.jpg' },
+            { id: 'shoe-26', name: 'NIKE Mona Lisa', price: 249.99, description: 'Der ,,Mona Lisa“ Masterpiece Sneaker bringt Kunstgeschichte an Ihren Fuß. Das Obermaterial ist mit dem berühmten Porträt der Mona Lisa von Leonardo da Vinci und Teilen der umgebenden Landschaft bedruckt, eingebettet in erdig braune und moosgrüne Töne. Die Unterschrift des Meisters an der Sohle verleiht dem Schuh musealen Charakter.', filename: 'shoe-26.jpg' },
+            { id: 'shoe-27', name: 'NIKE Vintage Letter', price: 184.99, description: 'Mit dem Modell ,,Vintage Letter“ begeben Sie sich auf eine Zeitreise. Das Design in verblichenen Beigetönen ist mit detaillierten, antiken Landkarten Zeichnungen überzogen, die den Look eines wertvollen, alten Dokuments imitieren. Ein rotes, wachsähnliches Siegel Badge mit dem MJ Siegelanhänger komplettiert den Entdecker Charme.', filename: 'shoe-27.jpg' },
+            { id: 'shoe-28', name: 'NIKE Hermit Crab', price: 144.99, description: 'Der ,,Hermit Crab“ Sneaker fängt die entspannte Atmosphäre eines Strandtags perfekt ein. Sandfarbenes, strukturiertes Wildleder bildet die Basis, verziert mit filigranen Seesternen, kleinen Muscheln und winzigen Kieselsteinen. Das Knöchel Overlay zeigt einen leuchtend türkisfarbenen Wasser Effekt mit einer dezenten Schildkröten Grafik.', filename: 'shoe-28.jpg' },
+            { id: 'shoe-29', name: 'NIKE Soft Gray Fleece', price: 119.99, description: 'Dieser Sneaker ist ein Musterbeispiel an Komfort: Der ,,Soft Gray Fleece“ ist vollständig aus weichem, meliertem grauem Fleece Material gefertigt, das den Look eines Lieblings Hoodies imitiert. Die minimalistische Ästhetik wird durch eine weiße Sohle und Zugschlaufen an der Ferse ergänzt.', filename: 'shoe-29.jpg' },
+            { id: 'shoe-30', name: 'NIKE Gucci', price: 459.99, description: 'Der ,,Gucci“ Sneaker ist die perfekte Fusion von Sport und Luxus. Das Obermaterial ist mit einem klassischen, beigefarbenen Logo Monogram Muster versehen, unterbrochen von den ikonischen roten und grünen Streifen an der Seite. Der rote Swoosh und das dunkelgrüne Futter sorgen für einen unverwechselbaren Kontrast.', filename: 'shoe-30.jpg' },
+            { id: 'shoe-31', name: 'NIKE Dark Wood', price: 169.99, description: 'Der ,,Dark Wood“ Sneaker besticht durch seine natürliche Ästhetik. Das gesamte Obermaterial ist mit einer tiefen, realistischen Maserung von dunklem Hartholz bedruckt. Ein heller, aus dem Holz herausgeschnitzter Swoosh und Schnürsenkel aus Naturseil unterstreichen diesen handwerklichen Look.', filename: 'shoe-31.jpg' },
+            { id: 'shoe-32', name: 'NIKE Coco Fiber', price: 134.99, description: 'Das Modell ,,Coco Fiber“ ist von Naturmaterialien inspiriert. Das Obermaterial ist mit einer flauschigen, braunen Textur überzogen, die Kokosfasern nachahmt. Zusammen mit der cremeweißen Sohle und den dicken Seil Schnürsenkeln entsteht ein rustikaler, aber trendiger Look.', filename: 'shoe-32.jpg' },
+            { id: 'shoe-33', name: 'NIKE Executive Judge', price: 299.99, description: 'Der ,,Executive Judge“ Sneaker strahlt Eleganz aus. Er präsentiert sich in tiefem Burgunderrot und Braun, ergänzt durch goldene Ösen und Schnallen Details. Ein eleganter goldener Aktentaschen Anhänger, der an den Schnürsenkeln befestigt ist, unterstreicht den anspruchsvollen Stil.', filename: 'shoe-33.jpg' },
+            { id: 'shoe-34', name: 'NIKE 7UP Carbonated Citrus', price: 174.99, description: 'Der ,,Carbonated Citrus“ Sneaker ist inspiriert vom ikonischen Erfrischungsgetränk. Er glänzt in einem leuchtenden, hochglänzenden Dunkelgrün, das perfekt mit einem knalligen gelben Swoosh und weißen sowie roten Akzenten harmoniert. Die prominenten 7UP Logos auf der Zunge und an der Seite machen dieses Modell zu einem sprudelnden Statement.', filename: 'shoe-34.jpg' },
+            { id: 'shoe-35', name: 'NIKE Francesco', price: 224.99, description: 'Das Modell ,,Francesco“ ist für Geschwindigkeitsliebhaber. Das Obermaterial aus glänzendem Metallic Rot wird durch einen grünen Swoosh mit gelb grünen Streifen und der Nummer 1 an der Ferse akzentuiert, was an klassische Rennwagen Lackierungen erinnert. Die hellen grünen Schnürsenkel setzen einen auffälligen Kontrast.', filename: 'shoe-35.jpg' },
+            { id: 'shoe-36', name: 'NIKE Man of Steel', price: 204.99, description: 'Der ,,Man of Steel“ Sneaker feiert den größten aller Superhelden. Er ist in einem satten Königsblau gehalten, akzentuiert durch einen kräftigen roten Swoosh. Das berühmte Superman Logo prangt auf der Zunge und ein fliegendes Emblem schmückt die Ferse, ein Muss für Comic Fans.', filename: 'shoe-36.jpg' },
+            { id: 'shoe-37', name: 'NIKE Fluffy Lamb', price: 159.99, description: 'Der ,,Fluffy Lamb“ Sneaker bietet maximalen Komfort und eine verspielte Ästhetik. Das gesamte Obermaterial ist mit einem cremefarbenen, flauschigen Teddyfell überzogen, das die Textur eines Schaffells imitiert. Die kleinen, rosafarbenen Ohren und das schwarze Gesicht am Knöchel machen diesen Schuh unwiderstehlich niedlich und kuschelig.', filename: 'shoe-37.jpg' },
+            { id: 'shoe-38', name: 'NIKE G0ld Movie', price: 234.99, description: 'Der ,,G0ld Movie“Sneaker ist eine Hommage an die Filmgeschichte. Das Obermaterial ist vollständig mit einem Allover Print aus nostalgischen Filmstreifen und Standbildern in Sepia und Schwarzweiß bedeckt. Ein glänzender goldener Swoosh und ein goldener Filmrollen Anhänger verleihen diesem cineastischen Schuh Glamour.', filename: 'shoe-38.jpg' },
+            { id: 'shoe-39', name: 'NIKE Vintage Treasure Map', price: 189.99, description: 'Der ,,Vintage Treasure Map“ Sneaker lädt zu Abenteuern ein. Das cremefarbene Obermaterial ist mit einer detaillierten, handgezeichneten Schatzkarte in Braun und Schwarz bedruckt, inklusive Kompassrose und roter X Markierung. Der verwitterte Look erinnert an eine lange Suche nach dem verborgenen Reichtum.', filename: 'shoe-39.jpg' },
+            { id: 'shoe-40', name: 'NIKE Academic Notebook', price: 149.99, description: 'Der ,,Academic Notebook“ Sneaker ist ein cleveres Design für alle Kopfarbeiter. Das helle Obermaterial imitiert das linierte Papier eines Notizbuchs, auf dem mathematische Formeln und Kritzeleien zu sehen sind. Ein dunkelblauer Swoosh und ein braunes Lederband mit einem angehängten Anspitzer betonen den Schreibtisch Stil.', filename: 'shoe-40.jpg' },
+            { id: 'shoe-41', name: 'NIKE Quilted Comfort', price: 179.99, description: 'Das Modell ,,Quilted Comfort“ bietet dezente Eleganz in monochromatischer Ausführung. Der Sneaker in einem sanften Creme oder Beige ist vollständig mit einem eleganten, gesteppten Muster überzogen. Der Ton in Ton gehaltene Look und die schlichte, natürliche Sohle sorgen für einen luxuriösen und ruhigen Auftritt.', filename: 'shoe-41.jpg' },
+            { id: 'shoe-42', name: 'NIKE Alpine Hunter', price: 199.99, description: 'Der ,,Alpine Hunter“ Sneaker ist von traditioneller Trachtenmode inspiriert. Er ist in einem satten Dunkelbraun gehalten und wird durch ein aufgesetztes Filz Hut Detail am Knöchel sowie feine Federn an Zunge und Seite akzentuiert. Ein Kontrast in hellbraunem Leder an der Ferse rundet den rustikalen Look ab.', filename: 'shoe-42.jpg' },
+            { id: 'shoe-43', name: 'NIKE College Varsity Navy', price: 169.99, description: 'Der ,,College Varsity Navy“ Sneaker präsentiert sich in einem zeitlosen sportlichen Look. Das Design kombiniert ein klares Weiß mit tiefem Marineblau. Eine dezent gestickte Grafik an der Ferse und der rote Akzentstreifen an der Sohle unterstreichen den klassischen High School oder College Look.', filename: 'shoe-43.jpg' }
+        ];
+        // Ende der Produkt-Definition
+        
+        // --- App State und Funktionen ---
+        window.app = {
+            cart: [],
+            currentView: 'home', // 'home', 'detail'
+            selectedShoe: null,
+            isCartOpen: false,
+
+            getProducts: () => products,
+            getProductById: (id) => products.find(p => p.id === id),
+
+            // Firebase Pfad für den Warenkorb
+            getCartDocRef: () => {
+                if (!db || !userId) return null;
+                // Privater Pfad: /artifacts/{appId}/users/{userId}/cart_items/myCart
+                return doc(db, 'artifacts', appId, 'users', userId, 'cart_items', 'myCart');
+            },
+
+            // Warenkorb-Listener
+            listenToCart: () => {
+                const cartRef = window.app.getCartDocRef();
+                if (!cartRef) return;
+
+                onSnapshot(cartRef, (docSnap) => {
+                    if (docSnap.exists() && docSnap.data().items) {
+                        window.app.cart = docSnap.data().items;
+                        window.app.renderCart();
+                        window.app.updateCartCount();
+                    } else {
+                        // Wenn das Dokument nicht existiert, initialisieren wir den Warenkorb
+                        window.app.cart = [];
+                        window.app.updateCartCount();
+                        // Beim ersten Mal das Dokument erstellen
+                        setDoc(cartRef, { items: [] }, { merge: true }).catch(e => console.error("Fehler beim Initialisieren des Warenkorbs:", e));
+                    }
+                }, (error) => {
+                    console.error("Fehler beim Abrufen des Warenkorbs in Echtzeit:", error);
+                    // Fallback: Warenkorb im localStorage speichern, falls Firestore fehlschlägt.
+                    // (Obwohl wir Firestore verwenden MÜSSEN, ist dies nur für den Notfall)
+                    window.app.cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
+                    window.app.renderCart();
+                    window.app.updateCartCount();
+                });
+            },
+
+            // Warenkorb im Firestore aktualisieren
+            saveCart: async () => {
+                const cartRef = window.app.getCartDocRef();
+                if (!cartRef) {
+                    console.error("Kann Warenkorb nicht speichern: Firestore nicht bereit.");
+                    // Fallback speichern
+                    localStorage.setItem('local_cart', JSON.stringify(window.app.cart));
+                    return;
+                }
+                try {
+                    await updateDoc(cartRef, { items: window.app.cart });
+                    console.log("Warenkorb im Firestore gespeichert.");
+                } catch (e) {
+                    // Beim ersten Speichern, wenn das Dokument noch nicht existiert
+                    if (e.code === 'not-found') {
+                        try {
+                            await setDoc(cartRef, { items: window.app.cart });
+                            console.log("Warenkorb-Dokument erstellt und gespeichert.");
+                        } catch (e2) {
+                            console.error("Fehler beim Erstellen und Speichern des Warenkorbs:", e2);
+                        }
+                    } else {
+                        console.error("Fehler beim Aktualisieren des Warenkorbs:", e);
+                    }
+                }
+            },
+
+            // Zum Detail-View navigieren
+            navigateToDetail: (shoeId) => {
+                window.app.selectedShoe = window.app.getProductById(shoeId);
+                window.app.currentView = 'detail';
+                window.app.render();
+                window.scrollTo(0, 0); // Nach oben scrollen
+            },
+
+            // Zur Home-Ansicht navigieren
+            navigateToHome: () => {
+                window.app.currentView = 'home';
+                window.app.selectedShoe = null;
+                window.app.render();
+                window.scrollTo(0, 0);
+            },
+
+            // Warenkorb öffnen/schließen
+            toggleCart: (open) => {
+                window.app.isCartOpen = open !== undefined ? open : !window.app.isCartOpen;
+                window.app.renderCart();
+            },
+
+            // Artikel zum Warenkorb hinzufügen
+            addItemToCart: (shoe, quantity = 1) => {
+                const existingItemIndex = window.app.cart.findIndex(item => item.id === shoe.id);
+
+                if (existingItemIndex > -1) {
+                    window.app.cart[existingItemIndex].quantity += quantity;
+                } else {
+                    window.app.cart.push({
+                        id: shoe.id,
+                        name: shoe.name,
+                        price: shoe.price,
+                        filename: shoe.filename,
+                        quantity: quantity
+                    });
+                }
+                window.app.saveCart();
+                window.app.showConfirmationMessage(`${quantity}x ${shoe.name} zum Warenkorb hinzugefügt!`);
+                window.app.updateCartCount();
+            },
+
+            // Artikel aus dem Warenkorb entfernen
+            removeItemFromCart: (shoeId) => {
+                window.app.cart = window.app.cart.filter(item => item.id !== shoeId);
+                window.app.saveCart();
+                window.app.updateCartCount();
+            },
+
+            // Menge im Warenkorb ändern
+            changeCartQuantity: (shoeId, delta) => {
+                const item = window.app.cart.find(item => item.id === shoeId);
+                if (item) {
+                    item.quantity += delta;
+                    if (item.quantity <= 0) {
+                        window.app.removeItemFromCart(shoeId);
+                    } else {
+                        window.app.saveCart();
+                    }
+                }
+            },
+
+            // Warenkorb-Anzahl in der Navigation aktualisieren
+            updateCartCount: () => {
+                const count = window.app.cart.reduce((sum, item) => sum + item.quantity, 0);
+                const countEl = document.getElementById('cart-count');
+                if (countEl) {
+                    countEl.textContent = count > 99 ? '99+' : count;
+                    countEl.classList.toggle('hidden', count === 0);
+                }
+            },
+
+            // Erfolgreiche Kaufabwicklung (simuliert)
+            checkout: () => {
+                if (window.app.cart.length === 0) {
+                    window.app.showConfirmationMessage("Ihr Warenkorb ist leer!", true);
+                    return;
+                }
+
+                // Simuliere den Kaufprozess
+                const total = window.app.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                window.app.cart = [];
+                window.app.saveCart(); // Leere den Warenkorb in Firestore
+
+                window.app.toggleCart(false);
+                window.app.showConfirmationMessage(`Vielen Dank für Ihren Kauf! Gesamtbetrag: ${total.toFixed(2)} €`, true);
+            },
+
+            // Bestätigungs-/Fehlermeldung anzeigen
+            showConfirmationMessage: (message, isSuccess = true) => {
+                const msgEl = document.getElementById('message-box');
+                const msgTextEl = document.getElementById('message-text');
+
+                msgTextEl.textContent = message;
+                msgEl.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-xl transition-transform transform ${isSuccess ? 'bg-green-100 border border-green-400 text-green-700' : 'bg-red-100 border border-red-400 text-red-700'}`;
+                msgEl.classList.remove('translate-x-full');
+                msgEl.classList.add('translate-x-0');
+
+                // Nachricht nach 3 Sekunden ausblenden
+                clearTimeout(window.app.messageTimeout);
+                window.app.messageTimeout = setTimeout(() => {
+                    msgEl.classList.remove('translate-x-0');
+                    msgEl.classList.add('translate-x-full');
+                }, 3000);
+            },
+
+            // Rendering der Hauptkomponenten
+            render: () => {
+                const mainContentEl = document.getElementById('main-content');
+                if (!mainContentEl) return;
+
+                if (window.app.currentView === 'home') {
+                    mainContentEl.innerHTML = window.app.renderHomeView();
+                } else if (window.app.currentView === 'detail' && window.app.selectedShoe) {
+                    mainContentEl.innerHTML = window.app.renderDetailView(window.app.selectedShoe);
+                }
+                // Icons rendern
+                lucide.createIcons();
+            },
+
+            // Home-Ansicht (Produkt-Grid)
+            renderHomeView: () => {
+                const productsHtml = window.app.getProducts().map(shoe => `
+                    <div class="card-shadow bg-white rounded-xl overflow-hidden cursor-pointer" onclick="window.app.navigateToDetail('${shoe.id}')">
+                        <!-- Platzhalterbild. Ersetze 'src' durch deine echten Bildpfade -->
+                        <img src="https://placehold.co/400x300/f0f0f0/000000?text=${shoe.filename}" 
+                             onerror="this.onerror=null; this.src='https://placehold.co/400x300/f0f0f0/000000?text=Bild+nicht+gefunden';"
+                             alt="${shoe.name}" class="w-full h-auto object-cover aspect-[4/3]"/>
+                        <div class="p-4">
+                            <h3 class="font-semibold text-lg">${shoe.name}</h3>
+                            <p class="text-gray-600">${shoe.price.toFixed(2)} €</p>
+                        </div>
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="py-8 px-4 sm:px-6 lg:px-8">
+                        <h2 class="text-3xl font-bold mb-4">Exklusive Custom-Kollektion</h2>
+                        <p class="text-gray-700 mb-8 max-w-3xl">Entdecken Sie unsere atemberaubende Kollektion von thematischen Air Jordan Mid Modellen, die Sneakerkultur und Popkultur in einzigartigen Designs verschmelzen lassen. Jedes Paar ist ein Statement für Individualität und Leidenschaft.</p>
+                        
+                        <!-- Produkt-Grid beginnt hier -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            ${productsHtml}
+                        </div>
+                    </div>
+                `;
+            },
+
+            // Detail-Ansicht
+            renderDetailView: (shoe) => {
+                return `
+                    <div class="py-8 px-4 sm:px-6 lg:px-8">
+                        <button onclick="window.app.navigateToHome()" class="flex items-center text-sm font-medium mb-6 text-gray-600 hover:text-black transition">
+                            <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Zurück zum Shop
+                        </button>
+                        
+                        <div class="lg:flex lg:space-x-12 bg-white p-6 rounded-xl shadow-lg">
+                            <!-- Bildbereich -->
+                            <div class="lg:w-1/2 mb-6 lg:mb-0">
+                                <img src="https://placehold.co/800x600/f0f0f0/000000?text=Detail%20von%20${shoe.filename}" 
+                                     onerror="this.onerror=null; this.src='https://placehold.co/800x600/f0f0f0/000000?text=Bild+nicht+gefunden';"
+                                     alt="${shoe.name} Detailansicht" class="w-full h-auto object-cover rounded-lg aspect-[4/3] border border-gray-100"/>
+                            </div>
+                            
+                            <!-- Detailinformationen -->
+                            <div class="lg:w-1/2">
+                                <h1 class="text-4xl font-bold mb-2">${shoe.name}</h1>
+                                <p class="text-3xl font-light text-black mb-6">${shoe.price.toFixed(2)} €</p>
+                                
+                                <h3 class="text-xl font-semibold mb-2">Beschreibung</h3>
+                                <p class="text-gray-700 mb-8">${shoe.description}</p>
+
+                                <div class="space-y-4">
+                                    <h3 class="text-lg font-medium">Größe auswählen (Beispiel)</h3>
+                                    <div class="flex flex-wrap gap-2">
+                                        ${[40, 41, 42, 43, 44].map(size => `
+                                            <button class="px-4 py-2 border rounded-md hover:bg-gray-100 transition">EU ${size}</button>
+                                        `).join('')}
+                                    </div>
+                                    
+                                    <button onclick="window.app.addItemToCart(window.app.getProductById('${shoe.id}'))" class="btn-primary w-full py-3 rounded-xl text-lg font-semibold flex items-center justify-center">
+                                        <i data-lucide="shopping-cart" class="w-5 h-5 mr-2"></i> In den Warenkorb
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            // Warenkorb-Modal rendern
+            renderCart: () => {
+                const cartModalEl = document.getElementById('cart-modal');
+                if (!cartModalEl) return;
+
+                if (!window.app.isCartOpen) {
+                    cartModalEl.classList.add('hidden');
+                    return;
+                }
+
+                cartModalEl.classList.remove('hidden');
+
+                const cartItemsEl = document.getElementById('cart-items');
+                const cartTotalEl = document.getElementById('cart-total');
+                const checkoutBtnEl = document.getElementById('checkout-btn');
+
+                let total = 0;
+                let itemsHtml = '';
+
+                if (window.app.cart.length === 0) {
+                    itemsHtml = '<p class="text-center text-gray-500 py-8">Ihr Warenkorb ist leer.</p>';
+                    checkoutBtnEl.disabled = true;
+                    checkoutBtnEl.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    checkoutBtnEl.disabled = false;
+                    checkoutBtnEl.classList.remove('opacity-50', 'cursor-not-allowed');
+
+                    itemsHtml = window.app.cart.map(item => {
+                        const itemTotal = item.price * item.quantity;
+                        total += itemTotal;
+
+                        return `
+                            <div class="flex items-center py-4 border-b">
+                                <img src="https://placehold.co/100x75/f0f0f0/000000?text=${item.filename}" 
+                                     onerror="this.onerror=null; this.src='https://placehold.co/100x75/f0f0f0/000000?text=Bild';"
+                                     alt="${item.name}" class="w-16 h-auto object-cover rounded-lg mr-4 border"/>
+                                <div class="flex-grow">
+                                    <h4 class="font-semibold text-sm">${item.name}</h4>
+                                    <p class="text-xs text-gray-600">${item.price.toFixed(2)} € pro Stück</p>
+                                </div>
+                                <div class="flex items-center space-x-2 text-sm">
+                                    <button onclick="window.app.changeCartQuantity('${item.id}', -1)" class="p-1 border rounded-md hover:bg-gray-100">
+                                        <i data-lucide="minus" class="w-4 h-4"></i>
+                                    </button>
+                                    <span class="w-4 text-center">${item.quantity}</span>
+                                    <button onclick="window.app.changeCartQuantity('${item.id}', 1)" class="p-1 border rounded-md hover:bg-gray-100">
+                                        <i data-lucide="plus" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                                <p class="font-semibold w-20 text-right">${itemTotal.toFixed(2)} €</p>
+                                <button onclick="window.app.removeItemFromCart('${item.id}')" class="ml-4 p-1 text-red-500 hover:text-red-700">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                cartItemsEl.innerHTML = itemsHtml;
+                cartTotalEl.textContent = total.toFixed(2) + ' €';
+
+                lucide.createIcons(); // Icons im Modal rendern
+            }
+        };
+
+        // DOMContentLoaded Event Listener
+        document.addEventListener('DOMContentLoaded', () => {
+            if (firebaseConfig) {
+                initializeFirebase();
+            } else {
+                console.warn("Keine Firebase-Konfiguration. Starte App ohne persistenten Warenkorb.");
+                // Wenn Firebase nicht verfügbar ist, starte die App trotzdem
+                window.app.render();
+                window.app.updateCartCount();
+                // Simuliere Cart-Daten für die UI, falls Firestore nicht initialisiert werden kann
+                window.app.cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
+                window.app.updateCartCount();
+            }
+
+            // Initiale Render-Aufrufe
+            window.app.render();
+            window.app.renderCart(); // Das Modal initialisieren/verbergen
+        });
+    </script>
+
+    <!-- Header / Navigation -->
+    <header class="sticky top-0 bg-white shadow-sm z-30 border-b">
+        <div class="container mx-auto flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
+            <!-- ANGEPASST: NIKE Schriftzug ist jetzt 4XL und extrabold -->
+            <a href="#" onclick="window.app.navigateToHome()" class="text-4xl font-extrabold tracking-widest text-black">NIKE</a>
+            
+            <!-- Warenkorb-Button -->
+            <div class="relative">
+                <button id="cart-button" onclick="window.app.toggleCart()" class="p-2 rounded-full hover:bg-gray-100 transition">
+                    <i data-lucide="shopping-bag" class="w-6 h-6 text-black"></i>
+                    <span id="cart-count" class="hidden">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Haupt-Content-Container (Home oder Detail) -->
+    <main id="main-content" class="container mx-auto min-h-[80vh]"></main>
+    
+    <!-- User ID Anzeige -->
+    <div class="fixed bottom-0 left-0 p-2 text-xs text-gray-400 bg-white/50 backdrop-blur-sm z-40 rounded-tr-lg mobile-only">
+        User: <span id="user-id-display">...</span>
+    </div>
+
+    <!-- Warenkorb Modal (Side Panel) -->
+    <div id="cart-modal" class="hidden fixed inset-0 z-40" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
+        
+        <!-- Overlay -->
+        <div onclick="window.app.toggleCart(false)" class="absolute inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        
+        <!-- Panel -->
+        <div class="fixed inset-y-0 right-0 max-w-full flex">
+            <div class="w-screen max-w-md">
+                <div class="h-full flex flex-col bg-white shadow-xl overflow-y-scroll">
+                    
+                    <div class="flex-1 py-6 px-4 sm:px-6">
+                        <div class="flex items-start justify-between">
+                            <h2 class="text-xl font-medium text-gray-900" id="slide-over-title">Warenkorb</h2>
+                            <div class="ml-3 flex h-7 items-center">
+                                <button type="button" onclick="window.app.toggleCart(false)" class="relative -m-2 p-2 text-gray-400 hover:text-gray-500">
+                                    <span class="absolute -inset-0.5"></span>
+                                    <span class="sr-only">Warenkorb schließen</span>
+                                    <i data-lucide="x" class="w-6 h-6"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="cart-items" class="mt-8">
+                            <!-- Warenkorb-Artikel werden hier per JavaScript gerendert -->
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 px-4 py-6 sm:px-6">
+                        <div class="flex justify-between text-base font-medium text-gray-900 mb-4">
+                            <p>Gesamtsumme:</p>
+                            <p id="cart-total">0.00 €</p>
+                        </div>
+                        <button id="checkout-btn" onclick="window.app.checkout()" class="btn-primary w-full py-3 rounded-xl text-lg font-semibold flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i data-lucide="credit-card" class="w-5 h-5 mr-2"></i> Jetzt Kaufen (Simuliert)
+                        </button>
+                        <div class="mt-6 flex justify-center text-center text-sm text-gray-500">
+                            <p>
+                                oder <button type="button" onclick="window.app.navigateToHome(); window.app.toggleCart(false);" class="font-medium text-black hover:text-gray-600">Weiter einkaufen <span aria-hidden="true"> &rarr;</span></button>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Globale Bestätigungs-/Fehlermeldung -->
+    <div id="message-box" class="fixed top-4 right-4 z-50 p-4 rounded-lg shadow-xl transition-transform transform translate-x-full">
+        <p id="message-text"></p>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-50 mt-12 border-t">
+        <div class="container mx-auto p-8 text-center text-gray-600 text-sm">
+            <p>&copy; 2024 NIKE Shop. Alle Rechte vorbehalten. | Clean White Design</p>
+            <p>Dein Warenkorb wird in Firestore unter User ID: <span id="user-id-display" class="font-mono text-xs">...</span> gespeichert.</p>
+        </div>
+    </footer>
+</body>
+</html>
+
